@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { clock } from '../../engine/clock'
-import { packetManager } from '../../engine/packet-manager'
+import { engine } from '../../engine/simulation-engine'
 import { useClock } from '../hooks/useClock'
 
 const SPEEDS = [0.5, 1, 2, 5]
@@ -15,8 +15,7 @@ export function ControlPanel() {
   }
 
   const handleReset = () => {
-    clock.reset()
-    packetManager.reset()
+    engine.reset()
     setStarted(false)
   }
 

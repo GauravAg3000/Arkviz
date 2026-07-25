@@ -1,5 +1,5 @@
 import { NODE_POSITIONS } from '../../pipeline/config'
-import { usePackets } from '../hooks/usePackets'
+import { useEngine } from '../hooks/useEngine'
 
 const DOT_SIZE = 8
 
@@ -10,20 +10,19 @@ function nodeCenter(id: string) {
 }
 
 export function PacketLayer() {
-  // Current packet positions from the simulation
-  const packets = usePackets()
+  const { inFlight } = useEngine()
 
   return (
     <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
-      {packets.map(packet => {
-        const from = nodeCenter(packet.from)
-        const to = nodeCenter(packet.to)
-        const x = from.x + (to.x - from.x) * packet.progress
-        const y = from.y + (to.y - from.y) * packet.progress
+      {inFlight.map((p) => {
+        const from = nodeCenter(p.from)
+        const to = nodeCenter(p.to)
+        const x = from.x + (to.x - from.x) * p.progress
+        const y = from.y + (to.y - from.y) * p.progress
 
         return (
           <div
-            key={packet.id}
+            key={p.id}
             style={{
               position: 'absolute',
               left: x - DOT_SIZE / 2,
