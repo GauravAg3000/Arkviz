@@ -2,6 +2,7 @@
 
 import type { InsertResult, NodeState, Packet } from '../types'
 import type { SimEvent } from './event-bus'
+import { chaos } from './chaos-controller'
 import { addHop, createPacket } from './packet'
 
 /**
@@ -29,6 +30,7 @@ export interface BehaviorOutput {
 // Every node will implement this interface
 export interface Behavior {
   onTick(ctx: BehaviorContext): BehaviorOutput
+  reset?(): void
 }
 
 
@@ -101,30 +103,71 @@ export class RedisBehavior implements Behavior {
 }
 
 export class WorkerBehavior implements Behavior {
+  // Packet that failed to reach PostgreSQL — retried each tick.
+  private retryPacket: Packet | null = null
+  // Remaining ticks to skip when slow-worker is active.
+  private latencyRemaining = 0
+
   onTick(ctx: BehaviorContext): BehaviorOutput {
-    const packet = ctx.queue.shift()
+    // Crashed worker — do nothing.
+    if (chaos.hasFailure('worker', 'worker_crash')) {
+      ctx.setState('failed')
+      return {}
+    }
+
+    // Slow worker — each packet takes 5 ticks before processing.
+    if (chaos.hasFailure('worker', 'worker_slow') && ctx.queue.length > 0) {
+      if (this.latencyRemaining > 0) {
+        this.latencyRemaining--
+        return {}
+      }
+      this.latencyRemaining = 5
+    }
+
+    // Get the next packet (retried or fresh).
+    const packet = this.retryPacket ?? ctx.queue.shift()
     if (!packet) return {}
+
     addHop(packet, ctx.nodeId)
 
+    // PostgreSQL is down — hold the packet and retry next tick.
+    if (chaos.hasFailure('postgresql', 'pg_down')) {
+      this.retryPacket = packet
+      ctx.setState('idle')
+      ctx.emitEvent({
+        nodeId: ctx.nodeId,
+        type: 'failure',
+        message: `${packet.id} — PG unreachable, retrying`,
+      })
+      // Engine sees connection_failure → doesn't route (packet stays in retryPacket).
+      return { processed: [{ packet, result: 'connection_failure' }] }
+    }
+
+    // Normal path — success, packet moves to PostgreSQL.
+    this.retryPacket = null
     ctx.setState('processing')
     ctx.emitEvent({
       nodeId: ctx.nodeId,
       type: 'process',
       message: `${packet.id} processed`,
     })
-    return {
-      processed: [
-        {
-          packet,
-          result: 'success',
-        },
-      ],
-    }
+    return { processed: [{ packet, result: 'success' }] }
+  }
+
+  reset() {
+    this.retryPacket = null
+    this.latencyRemaining = 0
   }
 }
 
 export class PostgresBehavior implements Behavior {
   onTick(ctx: BehaviorContext): BehaviorOutput {
+    // PostgreSQL is down — reject all packets.
+    if (chaos.hasFailure('postgresql', 'pg_down')) {
+      ctx.setState('failed')
+      return {}
+    }
+
     const packet = ctx.queue.shift()
     if (!packet) return {}
 

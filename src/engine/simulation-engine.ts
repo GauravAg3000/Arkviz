@@ -6,6 +6,7 @@ import {
   WorkerBehavior,
   type Behavior, type BehaviorContext, type BehaviorOutput,
 } from './behaviors'
+import { chaos, type FailureType } from './chaos-controller'
 import { clock, type TickPayload } from './clock'
 import { EventBus } from './event-bus'
 
@@ -54,6 +55,7 @@ export interface EngineSnapshot {
     queueDepth: number
   }[]
   inFlight: InFlightPacket[]
+  failures: { nodeId: string; type: FailureType }[]
 }
 
 export class SimulationEngine {
@@ -98,6 +100,7 @@ export class SimulationEngine {
         to: f.toNodeId,
         progress: f.progress,
       })),
+      failures: chaos.getActiveFailures(),
     }
   }
 
@@ -116,6 +119,10 @@ export class SimulationEngine {
     this.inFlight.length = 0
     this.tickCount = 0
     this.eventBus.clear()
+    chaos.clear()
+    for (const behavior of this.behaviors.values()) {
+      behavior.reset?.()
+    }
     this.notify()
   }
 
