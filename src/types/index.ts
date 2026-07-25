@@ -27,6 +27,14 @@ export interface Packet {
   createdAt: number
 }
 
+/** A packet currently being animated between two nodes. */
+export interface InFlightPacket {
+  id: string
+  from: string
+  to: string
+  progress: number
+}
+
 /** A simulated service (Redis, Worker, MongoDB, PostgreSQL, Client). */
 export interface SimNode {
   id: string

@@ -1,16 +1,25 @@
+import type { NodeState } from '../types'
 import { NODE_COLORS, type NodePosition } from './config'
 
 const CARD_W = 110
 const CARD_H = 64
 
+const STATE_COLORS: Record<NodeState, string> = {
+  idle: '#475569',
+  processing: '#22c55e',
+  failed: '#ef4444',
+  recovering: '#eab308',
+}
+
 interface Props {
   pos: NodePosition
+  state?: NodeState
   queueCount?: number
 }
 
-// TODO: Render them in better positions
-export function PipelineNode({ pos, queueCount = 0 }: Props) {
+export function PipelineNode({ pos, state = 'idle', queueCount = 0 }: Props) {
   const color = NODE_COLORS[pos.id]
+  const borderColor = state === 'processing' ? STATE_COLORS[state] : color
 
   return (
     <div
@@ -20,7 +29,7 @@ export function PipelineNode({ pos, queueCount = 0 }: Props) {
         top: pos.y - CARD_H / 2,
         width: CARD_W,
         height: CARD_H,
-        border: `2px solid ${color}`,
+        border: `2px solid ${borderColor}`,
         borderRadius: 8,
         display: 'flex',
         flexDirection: 'column',
