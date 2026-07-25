@@ -1,6 +1,7 @@
 import { NODE_POSITIONS } from './config'
 import { PipelineNode } from './PipelineNode'
 import { ConnectionLines } from './ConnectionLines'
+import { PacketLayer } from '../ui/components/PacketLayer'
 
 export function PipelineLayout() {
   return (
@@ -16,6 +17,7 @@ export function PipelineLayout() {
       {NODE_POSITIONS.map(pos => (
         <PipelineNode key={pos.id} pos={pos} />
       ))}
+      <PacketLayer />
     </div>
   )
 }
