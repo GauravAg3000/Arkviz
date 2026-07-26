@@ -35,6 +35,7 @@ export const NODE_POSITIONS: NodePosition[] = [
   { id: 'gateway', label: 'Gateway', x: 240, y: 280 },
   { id: 'redis', label: 'Redis', x: 420, y: 280 },
   { id: 'worker', label: 'Worker', x: 600, y: 280 },
+  { id: 'db_router', label: 'DB Router', x: 750, y: 280 },
   { id: 'postgresql', label: 'PostgreSQL', x: 800, y: 120 },
   { id: 'mongodb', label: 'MongoDB', x: 660, y: 440 },
   { id: 'healer', label: 'Healer', x: 660, y: 580 },
@@ -48,11 +49,12 @@ export const CONNECTIONS: ConnectionDef[] = [
   { from: 'client', to: 'gateway' },
   { from: 'gateway', to: 'redis' },
   { from: 'redis', to: 'worker' },
-  { from: 'worker', to: 'postgresql' },
-  { from: 'worker', to: 'mongodb' },
+  { from: 'worker', to: 'db_router' },
+  { from: 'db_router', to: 'postgresql' },
+  { from: 'db_router', to: 'mongodb' },
+  { from: 'db_router', to: 'dlq' },
   { from: 'mongodb', to: 'healer' },
   { from: 'healer', to: 'postgresql' },
-  { from: 'gateway', to: 'dlq' },
 ]
 
 /**
@@ -63,6 +65,7 @@ export const NODE_COLORS: Record<string, string> = {
   gateway: '#8b5cf6',
   redis: '#ef4444',
   worker: '#f59e0b',
+  db_router: '#a855f7',
   postgresql: '#3b82f6',
   mongodb: '#10b981',
   healer: '#14b8a6',

@@ -11,7 +11,7 @@ export type InsertResult = 'success' | 'connection_failure' | 'invalid_data'
  * - processed: Successfully reached PostgreSQL
  * - failed: Processing failed somewhere in the pipeline
  */
-export type PacketStatus = 'in_flight' | 'queued' | 'processed' | 'failed'
+export type PacketStatus = 'in_flight' | 'queued' | 'processed' | 'failed' | 'dead_lettered'
 
 /** One stop in a packet's journey. */
 export interface RouteHop {

@@ -1,6 +1,11 @@
 import type { InFlightPacket, NodeState, Packet } from '../types'
 import {
-  ClientBehavior, GatewayBehavior,
+  ClientBehavior,
+  DatabaseRouterBehavior,
+  DLQBehavior,
+  GatewayBehavior,
+  HealerBehavior,
+  MongoDBBehavior,
   PostgresBehavior,
   RedisBehavior,
   WorkerBehavior,
@@ -20,11 +25,15 @@ const ROUTE_MAP: Record<string, string | null> = {
   client: 'gateway',
   gateway: 'redis',
   redis: 'worker',
-  worker: 'postgresql',
+  worker: 'db_router',
+  db_router: 'postgresql',
+  mongodb: 'healer',
+  healer: 'postgresql',
   postgresql: null,
+  dlq: null,
 }
 
-const NODE_ORDER = ['client', 'gateway', 'redis', 'worker', 'postgresql'] as const
+const NODE_ORDER = ['client', 'gateway', 'redis', 'worker', 'db_router', 'mongodb', 'healer', 'postgresql', 'dlq'] as const
 
 // Amount a packet moves on every tick (0 → 1)
 const ANIMATION_STEP = 0.33
@@ -79,7 +88,11 @@ export class SimulationEngine {
     this.behaviors.set('gateway', new GatewayBehavior())
     this.behaviors.set('redis', new RedisBehavior())
     this.behaviors.set('worker', new WorkerBehavior())
+    this.behaviors.set('db_router', new DatabaseRouterBehavior())
     this.behaviors.set('postgresql', new PostgresBehavior())
+    this.behaviors.set('mongodb', new MongoDBBehavior())
+    this.behaviors.set('healer', new HealerBehavior())
+    this.behaviors.set('dlq', new DLQBehavior())
 
     // Run the simulation whenever the clock ticks.
     clock.onTick((payload) => this.onTick(payload))
@@ -127,9 +140,6 @@ export class SimulationEngine {
     this.eventBus.clear()
     chaos.clear()
     this.cb.reset()
-    for (const behavior of this.behaviors.values()) {
-      behavior.reset?.()
-    }
     this.notify()
   }
 
@@ -144,11 +154,10 @@ export class SimulationEngine {
       const behavior = this.behaviors.get(nodeId)!
       const ctx: BehaviorContext = {
         nodeId,
-        tick: this.tickCount,
         queue: entry.queue,
-        state: entry.state,
         setState: (state) => { entry.state = state },
         emitEvent: (event) => this.eventBus.emit({ tick: this.tickCount, ...event }),
+        canTryPrimary: this.cb.canTryPrimary(),
       }
       const output = behavior.onTick(ctx)
 
@@ -160,56 +169,39 @@ export class SimulationEngine {
 
     // Step 2: Send packets to their next destination.
     for (const { nodeId, output } of outputs) {
-      const route = (pkt: Packet, target: string | null) => {
-        if (target === null) return
-        this.inFlight.push({
-          id: pkt.id,
-          fromNodeId: nodeId,
-          toNodeId: target,
-          progress: 0,
-          packet: pkt,
-        })
-      }
-
-      // Newly created packets.
       for (const packet of output.emit ?? []) {
-        route(packet, ROUTE_MAP[nodeId])
+        this.routeInFlight(packet, nodeId, ROUTE_MAP[nodeId])
       }
 
-      // Processed packets — includes Circuit Breaker checks for Worker.
       for (const { packet, result } of output.processed ?? []) {
-        if (nodeId === 'worker' && result === 'connection_failure') {
-          // Count the failure inside the Circuit Breaker
+        if (result === 'connection_failure') {
           this.cb.recordFailure(this.tickCount)
-
           this.eventBus.emit({
             tick: this.tickCount,
             nodeId: 'circuit-breaker',
             type: 'failure',
-            message: `CB failure #${this.cb.failureCount} — state: ${this.cb.state}`,
+            message: `CB failure #${this.cb.failureCount} — routing to MongoDB`,
           })
+          this.routeInFlight(packet, nodeId, 'mongodb')
+          continue
+        }
+
+        if (result === 'invalid_data') {
+          this.eventBus.emit({
+            tick: this.tickCount,
+            nodeId: 'dlq',
+            type: 'info',
+            message: `${packet.id} — dead-lettered`,
+          })
+          this.routeInFlight(packet, nodeId, 'dlq')
           continue
         }
 
         if (result === 'success') {
-          if (nodeId === 'worker') {
+          if (nodeId === 'postgresql') {
             this.cb.recordSuccess()
           }
-
-          // CB blocks routing to Postgres while open.
-          if (nodeId === 'worker' && !this.cb.canTryPrimary()) {
-            const workerEntry = this.nodes.get('worker')!
-            workerEntry.queue.push(packet)
-            this.eventBus.emit({
-              tick: this.tickCount,
-              nodeId: 'circuit-breaker',
-              type: 'info',
-              message: `CB open — ${packet.id} re-queued to Worker`,
-            })
-            continue
-          }
-
-          route(packet, ROUTE_MAP[nodeId])
+          this.routeInFlight(packet, nodeId, ROUTE_MAP[nodeId])
         }
       }
     }
@@ -234,6 +226,17 @@ export class SimulationEngine {
     }
 
     this.notify()
+  }
+
+  private routeInFlight(packet: Packet, fromNodeId: string, target: string | null) {
+    if (target === null) return
+    this.inFlight.push({
+      id: packet.id,
+      fromNodeId,
+      toNodeId: target,
+      progress: 0,
+      packet,
+    })
   }
 
   private notify() {

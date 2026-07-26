@@ -10,12 +10,10 @@ import { addHop, createPacket } from './packet'
  */
 export interface BehaviorContext {
   nodeId: string
-  tick: number
-  // Packets waiting at this node
   queue: Packet[]
-  state: NodeState
   setState: (s: NodeState) => void
   emitEvent: (ev: Omit<SimEvent, 'tick'>) => void
+  canTryPrimary: boolean
 }
 
 /**
@@ -30,7 +28,6 @@ export interface BehaviorOutput {
 // Every node will implement this interface
 export interface Behavior {
   onTick(ctx: BehaviorContext): BehaviorOutput
-  reset?(): void
 }
 
 
@@ -103,48 +100,16 @@ export class RedisBehavior implements Behavior {
 }
 
 export class WorkerBehavior implements Behavior {
-  // Packet that failed to reach PostgreSQL — retried each tick.
-  private retryPacket: Packet | null = null
-  // Remaining ticks to skip when slow-worker is active.
-  private latencyRemaining = 0
-
   onTick(ctx: BehaviorContext): BehaviorOutput {
-    // Crashed worker — do nothing.
     if (chaos.hasFailure('worker', 'worker_crash')) {
       ctx.setState('failed')
       return {}
     }
 
-    // Slow worker — each packet takes 5 ticks before processing.
-    if (chaos.hasFailure('worker', 'worker_slow') && ctx.queue.length > 0) {
-      if (this.latencyRemaining > 0) {
-        this.latencyRemaining--
-        return {}
-      }
-      this.latencyRemaining = 5
-    }
-
-    // Get the next packet (retried or fresh).
-    const packet = this.retryPacket ?? ctx.queue.shift()
+    const packet = ctx.queue.shift()
     if (!packet) return {}
 
     addHop(packet, ctx.nodeId)
-
-    // PostgreSQL is down — hold the packet and retry next tick.
-    if (chaos.hasFailure('postgresql', 'pg_down')) {
-      this.retryPacket = packet
-      ctx.setState('idle')
-      ctx.emitEvent({
-        nodeId: ctx.nodeId,
-        type: 'failure',
-        message: `${packet.id} — PG unreachable, retrying`,
-      })
-      // Engine sees connection_failure → doesn't route (packet stays in retryPacket).
-      return { processed: [{ packet, result: 'connection_failure' }] }
-    }
-
-    // Normal path — success, packet moves to PostgreSQL.
-    this.retryPacket = null
     ctx.setState('processing')
     ctx.emitEvent({
       nodeId: ctx.nodeId,
@@ -152,11 +117,6 @@ export class WorkerBehavior implements Behavior {
       message: `${packet.id} processed`,
     })
     return { processed: [{ packet, result: 'success' }] }
-  }
-
-  reset() {
-    this.retryPacket = null
-    this.latencyRemaining = 0
   }
 }
 
@@ -189,5 +149,105 @@ export class PostgresBehavior implements Behavior {
         },
       ],
     }
+  }
+}
+
+export class MongoDBBehavior implements Behavior {
+  onTick(ctx: BehaviorContext): BehaviorOutput {
+    if (ctx.queue.length === 0) {
+      ctx.setState('idle')
+      return {}
+    }
+
+    ctx.setState('processing')
+
+    // Hold packets when PG is down — queue grows visibly.
+    if (chaos.hasFailure('postgresql')) return {}
+
+    const packet = ctx.queue.shift()!
+    addHop(packet, ctx.nodeId)
+    ctx.emitEvent({
+      nodeId: ctx.nodeId,
+      type: 'forward',
+      message: `${packet.id} forwarded to Healer`,
+    })
+    return { processed: [{ packet, result: 'success' }] }
+  }
+}
+
+export class HealerBehavior implements Behavior {
+  onTick(ctx: BehaviorContext): BehaviorOutput {
+    // Don't replay if PostgreSQL is down.
+    if (chaos.hasFailure('postgresql')) return {}
+
+    const packet = ctx.queue.shift()
+    if (!packet) return {}
+
+    addHop(packet, ctx.nodeId)
+    ctx.setState('processing')
+    ctx.emitEvent({
+      nodeId: ctx.nodeId,
+      type: 'process',
+      message: `${packet.id} replayed to PostgreSQL`,
+    })
+    return { processed: [{ packet, result: 'success' }] }
+  }
+}
+
+export class DatabaseRouterBehavior implements Behavior {
+  onTick(ctx: BehaviorContext): BehaviorOutput {
+    const packet = ctx.queue.shift()
+    if (!packet) return {}
+
+    addHop(packet, ctx.nodeId)
+
+    // Poison message → DLQ (data problem, CB stays closed).
+    if (chaos.hasFailure('worker', 'worker_invalid')) {
+      ctx.emitEvent({
+        nodeId: ctx.nodeId,
+        type: 'failure',
+        message: `${packet.id} — invalid data, routed to DLQ`,
+      })
+      return { processed: [{ packet, result: 'invalid_data' }] }
+    }
+
+    // PG down or CB blocking → MongoDB fallback.
+    if (chaos.hasFailure('postgresql') || !ctx.canTryPrimary) {
+      ctx.setState('idle')
+      ctx.emitEvent({
+        nodeId: ctx.nodeId,
+        type: 'failure',
+        message: `${packet.id} — PG unavailable, routed to MongoDB`,
+      })
+      return { processed: [{ packet, result: 'connection_failure' }] }
+    }
+
+    ctx.setState('processing')
+    ctx.emitEvent({
+      nodeId: ctx.nodeId,
+      type: 'forward',
+      message: `${packet.id} routed to PostgreSQL`,
+    })
+    return { processed: [{ packet, result: 'success' }] }
+  }
+}
+
+export class DLQBehavior implements Behavior {
+  onTick(ctx: BehaviorContext): BehaviorOutput {
+    const packet = ctx.queue.shift()
+    if (!packet) {
+      ctx.setState('idle')
+      return {}
+    }
+
+    packet.status = 'dead_lettered'
+    addHop(packet, ctx.nodeId)
+    ctx.setState('processing')
+    ctx.emitEvent({
+      nodeId: ctx.nodeId,
+      type: 'receive',
+      message: `${packet.id} dead-lettered`,
+    })
+    return {}
   }
 }

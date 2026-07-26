@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { clock } from '../../engine/clock'
-import { chaos } from '../../engine/chaos-controller'
+import { chaos, type FailureType } from '../../engine/chaos-controller'
 import { engine } from '../../engine/simulation-engine'
 import { useClock } from '../hooks/useClock'
 
@@ -10,8 +10,8 @@ export function ControlPanel() {
   const { tick, isPaused, speed, pause, resume, setSpeed } = useClock()
   const [started, setStarted] = useState(false)
   const [pgCountdown, setPgCountdown] = useState<number | null>(null)
-  const [slowCountdown, setSlowCountdown] = useState<number | null>(null)
   const [crashCountdown, setCrashCountdown] = useState<number | null>(null)
+  const [poisonCountdown, setPoisonCountdown] = useState<number | null>(null)
 
   const handleStart = () => {
     setStarted(true)
@@ -25,7 +25,7 @@ export function ControlPanel() {
 
   const startCountdown = (
     nodeId: string,
-    type: 'pg_down' | 'worker_slow' | 'worker_crash',
+    type: FailureType,
     setter: (n: number | null) => void,
   ) => {
     setter(3)
@@ -46,18 +46,18 @@ export function ControlPanel() {
     label: string,
     restoreLabel: string,
     nodeId: string,
-    type: 'pg_down' | 'worker_slow' | 'worker_crash',
+    type: FailureType,
     countdown: number | null,
     setter: (n: number | null) => void,
   ) => {
-    const failureActive = chaos.hasFailure(nodeId)
+    const failureActive = chaos.hasFailure(nodeId, type)
     const text = countdown !== null ? `${countdown}...` : failureActive ? restoreLabel : label
     return (
       <button
         onClick={() => {
           if (countdown !== null) return
           if (failureActive) {
-            chaos.restoreNode(nodeId)
+            chaos.restoreFailure(nodeId, type)
             return
           }
           startCountdown(nodeId, type, setter)
@@ -125,8 +125,8 @@ export function ControlPanel() {
       <span style={{ width: 1, height: 24, background: '#475569' }} />
 
       {failBtn('Fail PG', 'Restore PG', 'postgresql', 'pg_down', pgCountdown, setPgCountdown)}
-      {failBtn('Slow Worker', 'Restore Worker', 'worker', 'worker_slow', slowCountdown, setSlowCountdown)}
       {failBtn('Crash Worker', 'Restore Worker', 'worker', 'worker_crash', crashCountdown, setCrashCountdown)}
+      {failBtn('Poison Msg', 'Clear Poison', 'worker', 'worker_invalid', poisonCountdown, setPoisonCountdown)}
 
       <span style={{ width: 1, height: 24, background: '#475569' }} />
 
