@@ -2,8 +2,8 @@
 
 **Architecture Visualizer** — An interactive, browser-based distributed systems
 simulator. Watch events flow through a resilient telemetry pipeline in real
-time. Introduce failures and see the system react — circuit breakers open,
-data reroutes to fallback storage, and a self-healing daemon replays everything
+time. Inject failures and see the system react — circuit breakers open, data
+reroutes to fallback storage, and a self-healing daemon replays everything
 once order is restored.
 
 **No installation. No backend. Just a URL.**
@@ -12,39 +12,30 @@ once order is restored.
 
 ## The 30-Second Hook
 
-1. Open the page. 100 clients fire events through the pipeline.
-2. Packets flow: **Client → Gateway → Redis → Worker → PostgreSQL**.
-3. Click **Database Failure** — a 3-second countdown builds anticipation.
-4. PostgreSQL goes dark. The Circuit Breaker opens.
-5. Packets **drop downward** to MongoDB. The fallback path lights up.
-6. Click **Restore** — the Healer replays every buffered packet.
+1. Open the page. A client fires events through the pipeline every few ticks.
+2. Packets flow: **Client → Gateway → Redis → Worker → DB Router → PostgreSQL**.
+3. Click **Fail PG** — a 3-second countdown builds anticipation.
+4. PostgreSQL rejects connections. The Circuit Breaker opens after 3 failures.
+5. The DB Router diverts packets to MongoDB. Queue depth grows on Mongo.
+6. Click **Restore PG** — the Healer replays every buffered packet from Mongo.
 7. The Circuit Breaker closes. Normal flow resumes.
-
-You understand system resilience without reading documentation.
 
 ---
 
-## Architecture
+## Layout
 
 ```
-                ┌──────────────┐
-                │  PostgreSQL   │   ← normal path: upward
-                └──────▲───────┘
-                       │
-Client → Gateway → Redis → Worker
-                       │
-                  ┌────▼───────┐   ← failure path: downward
-                  │   MongoDB   │
-                  └────┬───────┘
-                       │
-                  ┌────▼───────┐
-                  │   Healer   │──→ replays back to PostgreSQL
-                  └────────────┘
+Client → Gateway → Redis → Worker → DB Router ──┬──→ PostgreSQL       (normal)
+                                                  │
+                                                  ├──→ MongoDB ──→ Healer ──→ PostgreSQL  (fallback)
+                                                  │
+                                                  └──→ DLQ            (poison)
 ```
 
-The layout is the interface. Packets flowing upward = normal operation. Packets
-flowing downward = failure mode. The spatial shift tells the story without
-words.
+The DB Router sits at the fork: normal operation routes to PostgreSQL, failure
+routes to MongoDB. Poison messages bypass both and go straight to the Dead
+Letter Queue. The Healer replays buffered packets from MongoDB back to
+PostgreSQL once the database recovers.
 
 ---
 
@@ -52,13 +43,12 @@ words.
 
 | Concept | How Arkviz Shows It |
 |---------|-------------------|
-| **Queue-based decoupling** | Gateway returns immediately. Redis buffers. Workers consume at their own pace. Watch queue depth grow when workers slow down. |
-| **Circuit Breaker** | 3 consecutive failures → CB opens. 10-second timeout → half-open probe. Success → closes. All 3 states are color-coded and animated. |
-| **Fallback store** | When PostgreSQL fails, packets route to MongoDB. The visual fork makes this obvious without labels. |
+| **Queue-based decoupling** | Gateway returns immediately. Redis buffers. Workers consume at their own pace. Watch queue depth grow when downstream is down. |
+| **Circuit Breaker** | 3 consecutive failures → CB opens. 100-tick timeout (10 s at 1× speed) → half-open probe. Success → closes. All 3 states are color-coded and animated. |
+| **Fallback store** | When PostgreSQL fails, packets route to MongoDB. Queue depth on Mongo tells the story. |
 | **Dead Letter Queue** | Malformed packets (poison messages) route to DLQ. The pipeline keeps running — bad data doesn't block good data. |
 | **Self-healing replay** | The Healer polls MongoDB, replays to PostgreSQL once it's healthy. Watch the pending count drain. |
-| **Idempotency** | Duplicate packet scenario tests at-least-once delivery semantics. |
-| **Backpressure** | Queue depth grows visibly when downstream slows. No crash — just slower ingestion. |
+| **Backpressure** | Queue depth grows visibly when downstream stalls. No crash — just slower ingestion. |
 
 ---
 
@@ -66,11 +56,9 @@ words.
 
 | Scenario | What Happens | What to Watch |
 |----------|-------------|---------------|
-| Database Failure | PG rejects connections → CB opens → packets reroute to Mongo | The downward fork. Queue depth stabilizes. |
-| Slow Worker | Worker latency spikes → Redis queue grows | Queue number climbing. Packets accumulating. |
-| Worker Crash | Worker stops consuming → Redis fills | Queue grows unbounded. Worker node dark. |
-| Duplicate Packet | Same packet emitted twice | Both processed. No double-counting. |
-| Poison Message | Bad data enters pipeline → Worker rejects → DLQ | One packet diverts to DLQ. Rest continue. |
+| Database Failure (`Fail PG`) | PG rejects connections → CB opens → packets reroute to Mongo | Mongo queue grows. CB state cycles closed → open → half_open → closed. |
+| Worker Crash (`Crash Worker`) | Worker stops consuming → Redis queue grows unbounded | Redis queue number climbing. Worker node dark. |
+| Poison Message (`Poison Msg`) | Bad data enters pipeline → DB Router detects → DLQ | One packet diverts to DLQ. Rest of pipeline unaffected. |
 
 ---
 
@@ -83,4 +71,3 @@ Healer daemon.
 
 Arkviz is the teaching companion. Same architecture, same failure modes, same
 recovery patterns — in the browser, interactive, no installation required.
-
