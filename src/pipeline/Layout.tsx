@@ -2,6 +2,7 @@ import { NODE_POSITIONS } from './config'
 import { PipelineNode } from './PipelineNode'
 import { ConnectionLines } from './ConnectionLines'
 import { PacketLayer } from '../ui/components/PacketLayer'
+import { CircuitBreakerIndicator } from '../ui/components/CircuitBreakerIndicator'
 import { useEngine } from '../ui/hooks/useEngine'
 
 export function PipelineLayout() {
@@ -29,6 +30,7 @@ export function PipelineLayout() {
           />
         )
       })}
+      <CircuitBreakerIndicator state={snapshot.cbState} failureCount={snapshot.cbFailureCount} />
       <PacketLayer />
     </div>
   )

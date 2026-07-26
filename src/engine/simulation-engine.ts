@@ -7,6 +7,7 @@ import {
   type Behavior, type BehaviorContext, type BehaviorOutput,
 } from './behaviors'
 import { chaos, type FailureType } from './chaos-controller'
+import { CircuitBreaker, type CBState } from './circuit-breaker'
 import { clock, type TickPayload } from './clock'
 import { EventBus } from './event-bus'
 
@@ -56,6 +57,8 @@ export interface EngineSnapshot {
   }[]
   inFlight: InFlightPacket[]
   failures: { nodeId: string; type: FailureType }[]
+  cbState: CBState
+  cbFailureCount: number
 }
 
 export class SimulationEngine {
@@ -66,6 +69,7 @@ export class SimulationEngine {
   private _changeCount = 0
   private tickCount = 0
   private listeners = new Set<() => void>()
+  readonly cb = new CircuitBreaker()
 
   constructor() {
     for (const id of NODE_ORDER) {
@@ -101,6 +105,8 @@ export class SimulationEngine {
         progress: f.progress,
       })),
       failures: chaos.getActiveFailures(),
+      cbState: this.cb.state,
+      cbFailureCount: this.cb.failureCount,
     }
   }
 
@@ -120,6 +126,7 @@ export class SimulationEngine {
     this.tickCount = 0
     this.eventBus.clear()
     chaos.clear()
+    this.cb.reset()
     for (const behavior of this.behaviors.values()) {
       behavior.reset?.()
     }
@@ -169,13 +176,46 @@ export class SimulationEngine {
         route(packet, ROUTE_MAP[nodeId])
       }
 
-      // Successfully processed packets.
+      // Processed packets — includes Circuit Breaker checks for Worker.
       for (const { packet, result } of output.processed ?? []) {
+        if (nodeId === 'worker' && result === 'connection_failure') {
+          // Count the failure inside the Circuit Breaker
+          this.cb.recordFailure(this.tickCount)
+
+          this.eventBus.emit({
+            tick: this.tickCount,
+            nodeId: 'circuit-breaker',
+            type: 'failure',
+            message: `CB failure #${this.cb.failureCount} — state: ${this.cb.state}`,
+          })
+          continue
+        }
+
         if (result === 'success') {
+          if (nodeId === 'worker') {
+            this.cb.recordSuccess()
+          }
+
+          // CB blocks routing to Postgres while open.
+          if (nodeId === 'worker' && !this.cb.canTryPrimary()) {
+            const workerEntry = this.nodes.get('worker')!
+            workerEntry.queue.push(packet)
+            this.eventBus.emit({
+              tick: this.tickCount,
+              nodeId: 'circuit-breaker',
+              type: 'info',
+              message: `CB open — ${packet.id} re-queued to Worker`,
+            })
+            continue
+          }
+
           route(packet, ROUTE_MAP[nodeId])
         }
       }
     }
+
+    // Step 2b: Advance the Circuit Breaker state machine.
+    this.cb.onTick(this.tickCount)
 
     // Step 3: Move packets already traveling.
     for (let i = this.inFlight.length - 1; i >= 0; i--) {
