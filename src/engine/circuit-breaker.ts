@@ -6,6 +6,8 @@
 */
 export type CBState = 'closed' | 'open' | 'half_open'
 
+export const CB_THRESHOLD = 3
+
 export class CircuitBreaker {
   private _state: CBState = 'closed'
 
@@ -18,7 +20,7 @@ export class CircuitBreaker {
   */
   private _openedAtTick = -1
 
-  readonly threshold = 3
+  readonly threshold = CB_THRESHOLD
 
   // Stay OPEN for 100 ticks before allowing a probe.
   readonly timeoutTicks = 100

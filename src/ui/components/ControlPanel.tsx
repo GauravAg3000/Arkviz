@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { motion } from 'framer-motion'
 import { clock } from '../../engine/clock'
 import { chaos, type FailureType } from '../../engine/chaos-controller'
 import { engine } from '../../engine/simulation-engine'
@@ -52,8 +53,11 @@ export function ControlPanel() {
   ) => {
     const failureActive = chaos.hasFailure(nodeId, type)
     const text = countdown !== null ? `${countdown}...` : failureActive ? restoreLabel : label
+    const active = failureActive ? 'bg-[#00FF9D] text-[#0B0E14] border-[#00FF9D]' : 'bg-[#1E2638] text-[#F1F5F9] border-[#2A3548]'
+    const disabled = countdown !== null ? 'opacity-50 cursor-not-allowed' : 'opacity-100 cursor-pointer'
     return (
       <button
+        className={`px-[14px] py-[6px] rounded font-mono font-bold text-xs border transition-colors duration-200 ${active} ${disabled}`}
         onClick={() => {
           if (countdown !== null) return
           if (failureActive) {
@@ -62,12 +66,6 @@ export function ControlPanel() {
           }
           startCountdown(nodeId, type, setter)
         }}
-        style={{
-          ...btnStyle,
-          background: failureActive ? '#16a34a' : '#dc2626',
-          cursor: countdown !== null ? 'not-allowed' : 'pointer',
-          opacity: countdown !== null ? 0.6 : 1,
-        }}
       >
         {text}
       </button>
@@ -75,76 +73,57 @@ export function ControlPanel() {
   }
 
   return (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 12,
-        padding: '10px 20px',
-        background: '#1e293b',
-        borderRadius: 8,
-        fontFamily: 'monospace',
-        fontSize: 13,
-        flexWrap: 'wrap',
-      }}
+    <motion.div
+      initial={{ opacity: 0, y: -10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4 }}
+      className="flex items-center gap-2.5 px-[18px] py-[10px] bg-[#121824] rounded-lg border border-[#1E2638] font-mono text-xs flex-wrap text-slate-400"
     >
       {!started ? (
-        <button onClick={handleStart} style={btnStyle}>
+        <button
+          onClick={handleStart}
+          className="px-[14px] py-[6px] rounded font-mono font-bold text-xs border cursor-pointer bg-[#00F0FF] text-[#0B0E14] border-[#00F0FF]"
+        >
           ▶ Start
         </button>
       ) : (
-        <button onClick={isPaused ? resume : pause} style={btnStyle}>
-          {isPaused ? '▶' : '⏸'}
+        <button
+          onClick={isPaused ? resume : pause}
+          className="px-[14px] py-[6px] rounded font-mono font-bold text-xs border cursor-pointer bg-[#1E2638] text-[#F1F5F9] border-[#2A3548]"
+        >
+          {isPaused ? '▶ Resume' : '⏸ Pause'}
         </button>
       )}
 
       <span>
-        Tick: <strong>{tick}</strong>
+        Tick: <strong className="text-[#F1F5F9]">{tick}</strong>
       </span>
 
       <span>Speed:</span>
       <select
         value={speed}
         onChange={(e) => setSpeed(Number(e.target.value))}
-        style={{
-          background: '#0f172a',
-          color: '#e2e8f0',
-          border: '1px solid #475569',
-          borderRadius: 4,
-          padding: '4px 8px',
-          fontFamily: 'monospace',
-        }}
+        className="bg-[#0B0E14] text-[#F1F5F9] border border-[#2A3548] rounded px-2 py-1 font-mono text-xs"
       >
         {SPEEDS.map((s) => (
-          <option key={s} value={s}>
-            {s}x
-          </option>
+          <option key={s} value={s}>{s}x</option>
         ))}
       </select>
 
-      <span style={{ width: 1, height: 24, background: '#475569' }} />
+      <div className="w-px h-[22px] bg-[#2A3548]" />
 
       {failBtn('Fail PG', 'Restore PG', 'postgresql', 'pg_down', pgCountdown, setPgCountdown)}
       {failBtn('Crash Worker', 'Restore Worker', 'worker', 'worker_crash', crashCountdown, setCrashCountdown)}
       {failBtn('Poison Msg', 'Clear Poison', 'worker', 'worker_invalid', poisonCountdown, setPoisonCountdown)}
 
-      <span style={{ width: 1, height: 24, background: '#475569' }} />
+      <div className="w-px h-[22px] bg-[#2A3548]" />
 
-      <button onClick={handleReset} style={btnStyle}>
+      <button
+        onClick={handleReset}
+        className="px-[14px] py-[6px] rounded font-mono font-bold text-xs border cursor-pointer bg-[#1E2638] text-[#F1F5F9] border-[#2A3548]"
+      >
         Reset
       </button>
-    </div>
+    </motion.div>
   )
-}
-
-const btnStyle: React.CSSProperties = {
-  background: '#3b82f6',
-  color: '#fff',
-  border: 'none',
-  borderRadius: 4,
-  padding: '6px 14px',
-  cursor: 'pointer',
-  fontFamily: 'monospace',
-  fontWeight: 700,
-  fontSize: 13,
 }

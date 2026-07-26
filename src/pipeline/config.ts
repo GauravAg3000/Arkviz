@@ -28,23 +28,19 @@ export interface ConnectionDef {
 
 /**
  * Pipeline node layout.
- * React iterates over this array to render each node.
  */
 export const NODE_POSITIONS: NodePosition[] = [
-  { id: 'client', label: 'Client', x: 60, y: 280 },
-  { id: 'gateway', label: 'Gateway', x: 240, y: 280 },
-  { id: 'redis', label: 'Redis', x: 420, y: 280 },
-  { id: 'worker', label: 'Worker', x: 600, y: 280 },
-  { id: 'db_router', label: 'DB Router', x: 750, y: 280 },
-  { id: 'postgresql', label: 'PostgreSQL', x: 800, y: 120 },
-  { id: 'mongodb', label: 'MongoDB', x: 660, y: 440 },
-  { id: 'healer', label: 'Healer', x: 660, y: 580 },
-  { id: 'dlq', label: 'DLQ', x: 880, y: 440 },
-];
+  { id: 'client',     label: 'Client',     x: 100, y: 510 },
+  { id: 'gateway',    label: 'Gateway',    x: 310, y: 510 },
+  { id: 'redis',      label: 'Redis',      x: 520, y: 510 },
+  { id: 'worker',     label: 'Worker',     x: 730, y: 510 },
+  { id: 'dlq',        label: 'DLQ',        x: 630, y: 150 },
+  { id: 'postgresql', label: 'PostgreSQL', x: 910, y: 150 },
+  { id: 'mongodb',    label: 'MongoDB',    x: 380, y: 270 },
+  { id: 'db_router',  label: 'DB Router',  x: 630, y: 270 },
+  { id: 'healer',     label: 'Healer',     x: 380, y: 390 },
+]
 
-/**
- * Node connections used for visualization.
- */
 export const CONNECTIONS: ConnectionDef[] = [
   { from: 'client', to: 'gateway' },
   { from: 'gateway', to: 'redis' },
@@ -57,17 +53,33 @@ export const CONNECTIONS: ConnectionDef[] = [
   { from: 'healer', to: 'postgresql' },
 ]
 
-/**
- * Color for each node.
- */
 export const NODE_COLORS: Record<string, string> = {
-  client: '#6366f1',
-  gateway: '#8b5cf6',
-  redis: '#ef4444',
-  worker: '#f59e0b',
-  db_router: '#a855f7',
-  postgresql: '#3b82f6',
-  mongodb: '#10b981',
-  healer: '#14b8a6',
-  dlq: '#6b7280',
+  client: '#00F0FF',
+  gateway: '#00F0FF',
+  redis: '#FF2E54',
+  worker: '#00F0FF',
+  db_router: '#A855F7',
+  postgresql: '#A855F7',
+  mongodb: '#00FF9D',
+  healer: '#00FF9D',
+  dlq: '#A855F7',
+}
+
+export const CANVAS_WIDTH = 1100
+export const CANVAS_HEIGHT = 680
+
+export const NODE_MAP: Record<string, { x: number; y: number }> = Object.fromEntries(
+  NODE_POSITIONS.map(n => [n.id, { x: n.x, y: n.y }])
+)
+
+export const NODE_GLOWS: Record<string, string> = {
+  client: '0 0 12px rgba(0, 240, 255, 0.35)',
+  gateway: '0 0 12px rgba(0, 240, 255, 0.35)',
+  redis: '0 0 12px rgba(255, 46, 84, 0.4)',
+  worker: '0 0 12px rgba(0, 240, 255, 0.35)',
+  db_router: '0 0 12px rgba(168, 85, 247, 0.35)',
+  postgresql: '0 0 12px rgba(168, 85, 247, 0.35)',
+  mongodb: '0 0 12px rgba(0, 255, 157, 0.35)',
+  healer: '0 0 12px rgba(0, 255, 157, 0.35)',
+  dlq: '0 0 12px rgba(168, 85, 247, 0.35)',
 }
