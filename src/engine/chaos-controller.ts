@@ -1,35 +1,43 @@
-// Which failure was triggered on a node
-export type FailureType = 'pg_down' | 'worker_slow' | 'worker_crash'
+export type FailureType = 'pg_down' | 'worker_crash' | 'worker_invalid'
 
 export class ChaosController {
-  // Each entry records an active failure on a specific node.
-  private failures = new Map<string, FailureType>()
+  private failures = new Map<string, Set<FailureType>>()
 
   /** Inject a failure into the simulation. */
   injectFailure(nodeId: string, type: FailureType) {
-    this.failures.set(nodeId, type)
+    let types = this.failures.get(nodeId)
+    if (!types) {
+      types = new Set()
+      this.failures.set(nodeId, types)
+    }
+    types.add(type)
   }
 
-  /** Remove all failures from a node. */
-  restoreNode(nodeId: string) {
-    this.failures.delete(nodeId)
+  restoreFailure(nodeId: string, type: FailureType) {
+    const types = this.failures.get(nodeId)
+    if (!types) return
+    types.delete(type)
+    if (types.size === 0) this.failures.delete(nodeId)
   }
 
-  /** Check if a failure is active. Optionally filter by type. */
   hasFailure(nodeId: string, type?: FailureType): boolean {
-    if (type) return this.failures.get(nodeId) === type
+    if (type) {
+      const types = this.failures.get(nodeId)
+      return types ? types.has(type) : false
+    }
     return this.failures.has(nodeId)
   }
 
-  /** Return all active failures for the UI / snapshot. */
   getActiveFailures(): Array<{ nodeId: string; type: FailureType }> {
-    return Array.from(this.failures.entries()).map(([nodeId, type]) => ({
-      nodeId,
-      type,
-    }))
+    const result: Array<{ nodeId: string; type: FailureType }> = []
+    for (const [nodeId, types] of this.failures) {
+      for (const type of types) {
+        result.push({ nodeId, type })
+      }
+    }
+    return result
   }
 
-  /** Remove every active failure (used on reset). */
   clear() {
     this.failures.clear()
   }
