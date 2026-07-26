@@ -68,17 +68,25 @@ export interface EngineSnapshot {
   failures: { nodeId: string; type: FailureType }[]
   cbState: CBState
   cbFailureCount: number
+  totalCreated: number
+  totalProcessed: number
+  totalDeadLettered: number
+  throughput: number
 }
 
 export class SimulationEngine {
   private nodes = new Map<string, NodeEntry>()  // All nodes in the pipeline
   private behaviors = new Map<string, Behavior>()
-  private eventBus = new EventBus()
+  readonly eventBus = new EventBus()
   private inFlight: InFlightEntry[] = []  // Packets currently moving between nodes
   private _changeCount = 0
   private tickCount = 0
   private listeners = new Set<() => void>()
   readonly cb = new CircuitBreaker()
+  private _totalCreated = 0
+  private _totalProcessed = 0
+  private _totalDeadLettered = 0
+  private processedRing: number[] = []
 
   constructor() {
     for (const id of NODE_ORDER) {
@@ -120,6 +128,13 @@ export class SimulationEngine {
       failures: chaos.getActiveFailures(),
       cbState: this.cb.state,
       cbFailureCount: this.cb.failureCount,
+      totalCreated: this._totalCreated,
+      totalProcessed: this._totalProcessed,
+      totalDeadLettered: this._totalDeadLettered,
+      throughput: (() => {
+        if (this.processedRing.length < 2) return 0
+        return this.processedRing[this.processedRing.length - 1] - this.processedRing[0]
+      })(),
     }
   }
 
@@ -140,6 +155,10 @@ export class SimulationEngine {
     this.eventBus.clear()
     chaos.clear()
     this.cb.reset()
+    this._totalCreated = 0
+    this._totalProcessed = 0
+    this._totalDeadLettered = 0
+    this.processedRing.length = 0
     this.notify()
   }
 
@@ -169,11 +188,17 @@ export class SimulationEngine {
 
     // Step 2: Send packets to their next destination.
     for (const { nodeId, output } of outputs) {
+      if (output.emit) this._totalCreated += output.emit.length
+
       for (const packet of output.emit ?? []) {
         this.routeInFlight(packet, nodeId, ROUTE_MAP[nodeId])
       }
 
       for (const { packet, result } of output.processed ?? []) {
+        if (result === 'invalid_data') {
+          this._totalDeadLettered++
+        }
+
         if (result === 'connection_failure') {
           this.cb.recordFailure(this.tickCount)
           this.eventBus.emit({
@@ -199,6 +224,7 @@ export class SimulationEngine {
 
         if (result === 'success') {
           if (nodeId === 'postgresql') {
+            this._totalProcessed++
             this.cb.recordSuccess()
           }
           this.routeInFlight(packet, nodeId, ROUTE_MAP[nodeId])
@@ -232,6 +258,9 @@ export class SimulationEngine {
         this.inFlight.splice(i, 1)
       }
     }
+
+    this.processedRing.push(this._totalProcessed)
+    if (this.processedRing.length > 10) this.processedRing.shift()
 
     this.notify()
   }

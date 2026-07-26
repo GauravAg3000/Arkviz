@@ -10,9 +10,11 @@ export interface SimEvent {
  * Used by the Event Log to show what happened during the simulation.
  */
 export class EventBus {
-  // Keep the most recent events in memory
   private events: SimEvent[] = []
   private maxEvents = 100
+  private _version = 0
+
+  get version() { return this._version }
 
   /**
    * Add a new event.
@@ -20,6 +22,7 @@ export class EventBus {
    */
   emit(event: SimEvent) {
     this.events.push(event)
+    this._version++
     if (this.events.length > this.maxEvents) this.events.shift()
   }
 
@@ -29,5 +32,6 @@ export class EventBus {
 
   clear() {
     this.events = []
+    this._version = 0
   }
 }

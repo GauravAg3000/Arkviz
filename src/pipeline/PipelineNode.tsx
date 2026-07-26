@@ -69,12 +69,8 @@ export function PipelineNode({ pos, state = 'idle', queueCount = 0, cbState, cbF
   return (
     <motion.div
       className="absolute"
-      style={{
-        left: pos.x - W / 2,
-        top: pos.y - H / 2,
-        width: W,
-        height: H,
-      }}
+      style={{ width: W, height: H }}
+      initial={{ x: pos.x - W / 2, y: pos.y - H / 2 }}
       animate={{ boxShadow: state !== 'idle' ? glow : 'none' }}
       transition={{ duration: 0.3 }}
     >

@@ -29,7 +29,7 @@ function PacketPill({ from, to, progress }: { from: string; to: string; progress
       className="absolute rounded-full bg-green-500"
       style={{ width: W, height: H, boxShadow: '0 0 6px rgba(34,197,94,0.5)' }}
       initial={false}
-      animate={{ left: pos.x - W / 2, top: pos.y - H / 2 }}
+      animate={{ x: pos.x - W / 2, y: pos.y - H / 2 }}
       transition={{ type: 'spring', damping: 25, stiffness: 250 }}
     />
   )

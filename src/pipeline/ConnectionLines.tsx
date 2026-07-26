@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { motion } from 'framer-motion'
 import { NODE_MAP, CONNECTIONS } from './config'
 
@@ -54,7 +55,7 @@ const PATH_DATA: (string | null)[] = CONNECTIONS.map(conn => {
   return pts.length >= 2 ? 'M ' + pts.map(p => `${p.x},${p.y}`).join(' L ') : null
 })
 
-export function ConnectionLines() {
+export const ConnectionLines = memo(function ConnectionLines() {
   return (
     <svg className="absolute inset-0 w-full h-full pointer-events-none overflow-visible">
       <defs>
@@ -82,4 +83,4 @@ export function ConnectionLines() {
       })}
     </svg>
   )
-}
+})
