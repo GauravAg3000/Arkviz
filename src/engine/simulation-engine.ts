@@ -36,7 +36,7 @@ const ROUTE_MAP: Record<string, string | null> = {
 const NODE_ORDER = ['client', 'gateway', 'redis', 'worker', 'db_router', 'mongodb', 'healer', 'postgresql', 'dlq'] as const
 
 // Amount a packet moves on every tick (0 → 1)
-const ANIMATION_STEP = 0.33
+const ANIMATION_STEP = 0.09
 
 /**
  * Represents a packet currently traveling between two nodes.
@@ -208,6 +208,14 @@ export class SimulationEngine {
 
     // Step 2b: Advance the Circuit Breaker state machine.
     this.cb.onTick(this.tickCount)
+
+    // Map CB state to db_router visual state.
+    const dbRouter = this.nodes.get('db_router')!
+    if (this.cb.state === 'open') {
+      dbRouter.state = 'failed'
+    } else if (this.cb.state === 'half_open') {
+      dbRouter.state = 'recovering'
+    }
 
     // Step 3: Move packets already traveling.
     for (let i = this.inFlight.length - 1; i >= 0; i--) {

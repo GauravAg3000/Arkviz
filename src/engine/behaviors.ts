@@ -1,8 +1,8 @@
 // Behavior defines how each node behaves when the clock ticks.
 
 import type { InsertResult, NodeState, Packet } from '../types'
-import type { SimEvent } from './event-bus'
 import { chaos } from './chaos-controller'
+import type { SimEvent } from './event-bus'
 import { addHop, createPacket } from './packet'
 
 /**
@@ -33,13 +33,16 @@ export interface Behavior {
 
 export class ClientBehavior implements Behavior {
   private tickCount = 0
-  private readonly interval = 10
+  private readonly interval = 6
 
   onTick(ctx: BehaviorContext): BehaviorOutput {
     this.tickCount++
 
     // Emit one packet every 'interval' ticks
-    if (this.tickCount % this.interval !== 0) return {}
+    if (this.tickCount % this.interval !== 0) {
+      ctx.setState('idle')
+      return {}
+    }
     const packet = createPacket()
 
     // Record that the packet visited this node
@@ -61,7 +64,10 @@ export class GatewayBehavior implements Behavior {
   onTick(ctx: BehaviorContext): BehaviorOutput {
     // Process one packet at a time
     const packet = ctx.queue.shift()
-    if (!packet) return {}
+    if (!packet) {
+      ctx.setState('idle')
+      return {}
+    }
 
     addHop(packet, ctx.nodeId)
     ctx.setState('processing')
@@ -84,8 +90,12 @@ export class GatewayBehavior implements Behavior {
 export class RedisBehavior implements Behavior {
   onTick(ctx: BehaviorContext): BehaviorOutput {
     const packet = ctx.queue.shift()
-    if (!packet) return {}
+    if (!packet) {
+      ctx.setState('idle')
+      return {}
+    }
     addHop(packet, ctx.nodeId)
+    ctx.setState('processing')
 
     // Redis only forwards packets.
     return {
@@ -107,7 +117,10 @@ export class WorkerBehavior implements Behavior {
     }
 
     const packet = ctx.queue.shift()
-    if (!packet) return {}
+    if (!packet) {
+      ctx.setState('idle')
+      return {}
+    }
 
     addHop(packet, ctx.nodeId)
     ctx.setState('processing')
@@ -129,7 +142,10 @@ export class PostgresBehavior implements Behavior {
     }
 
     const packet = ctx.queue.shift()
-    if (!packet) return {}
+    if (!packet) {
+      ctx.setState('idle')
+      return {}
+    }
 
     // Final destination reached
     packet.status = 'processed'
@@ -181,7 +197,10 @@ export class HealerBehavior implements Behavior {
     if (chaos.hasFailure('postgresql')) return {}
 
     const packet = ctx.queue.shift()
-    if (!packet) return {}
+    if (!packet) {
+      ctx.setState('idle')
+      return {}
+    }
 
     addHop(packet, ctx.nodeId)
     ctx.setState('processing')
@@ -197,7 +216,10 @@ export class HealerBehavior implements Behavior {
 export class DatabaseRouterBehavior implements Behavior {
   onTick(ctx: BehaviorContext): BehaviorOutput {
     const packet = ctx.queue.shift()
-    if (!packet) return {}
+    if (!packet) {
+      ctx.setState('idle')
+      return {}
+    }
 
     addHop(packet, ctx.nodeId)
 
