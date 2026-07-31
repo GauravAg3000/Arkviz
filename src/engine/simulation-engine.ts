@@ -11,9 +11,9 @@ import {
   WorkerBehavior,
   type Behavior, type BehaviorContext, type BehaviorOutput,
 } from './behaviors'
-import { chaos, type FailureType } from './chaos-controller'
+import { chaos } from './chaos-controller'
 import { CircuitBreaker, type CBState } from './circuit-breaker'
-import { clock, type TickPayload } from './clock'
+import { clock } from './clock'
 import { EventBus } from './event-bus'
 
 
@@ -37,6 +37,9 @@ const NODE_ORDER = ['client', 'gateway', 'redis', 'worker', 'db_router', 'mongod
 
 // Amount a packet moves on every tick (0 → 1)
 const ANIMATION_STEP = 0.09
+
+// Throughput is measured as the number of packets processed within a fixed tick window.
+const WINDOW_TICKS = 10
 
 /**
  * Represents a packet currently traveling between two nodes.
@@ -65,7 +68,6 @@ export interface EngineSnapshot {
     queueDepth: number
   }[]
   inFlight: InFlightPacket[]
-  failures: { nodeId: string; type: FailureType }[]
   cbState: CBState
   cbFailureCount: number
   totalCreated: number
@@ -86,7 +88,8 @@ export class SimulationEngine {
   private _totalCreated = 0
   private _totalProcessed = 0
   private _totalDeadLettered = 0
-  private processedRing: number[] = []
+  private windowCount = 0
+  private lastThroughput = 0
 
   constructor() {
     for (const id of NODE_ORDER) {
@@ -103,7 +106,7 @@ export class SimulationEngine {
     this.behaviors.set('dlq', new DLQBehavior())
 
     // Run the simulation whenever the clock ticks.
-    clock.onTick((payload) => this.onTick(payload))
+    clock.onTick(() => this.onTick())
   }
 
   get changeCount() { return this._changeCount }
@@ -125,16 +128,12 @@ export class SimulationEngine {
         to: f.toNodeId,
         progress: f.progress,
       })),
-      failures: chaos.getActiveFailures(),
       cbState: this.cb.state,
       cbFailureCount: this.cb.failureCount,
       totalCreated: this._totalCreated,
       totalProcessed: this._totalProcessed,
       totalDeadLettered: this._totalDeadLettered,
-      throughput: (() => {
-        if (this.processedRing.length < 2) return 0
-        return this.processedRing[this.processedRing.length - 1] - this.processedRing[0]
-      })(),
+      throughput: this.lastThroughput,
     }
   }
 
@@ -158,11 +157,12 @@ export class SimulationEngine {
     this._totalCreated = 0
     this._totalProcessed = 0
     this._totalDeadLettered = 0
-    this.processedRing.length = 0
+    this.windowCount = 0
+    this.lastThroughput = 0
     this.notify()
   }
 
-  private onTick(_payload: TickPayload) {
+  private onTick() {
     this.tickCount++
 
     const outputs: { nodeId: string; output: BehaviorOutput }[] = []
@@ -225,6 +225,7 @@ export class SimulationEngine {
         if (result === 'success') {
           if (nodeId === 'postgresql') {
             this._totalProcessed++
+            this.windowCount++
             this.cb.recordSuccess()
           }
           this.routeInFlight(packet, nodeId, ROUTE_MAP[nodeId])
@@ -259,8 +260,11 @@ export class SimulationEngine {
       }
     }
 
-    this.processedRing.push(this._totalProcessed)
-    if (this.processedRing.length > 10) this.processedRing.shift()
+    // Roll the throughput window over every WINDOW_TICKS ticks.
+    if (this.tickCount % WINDOW_TICKS === 0) {
+      this.lastThroughput = this.windowCount
+      this.windowCount = 0
+    }
 
     this.notify()
   }

@@ -3,7 +3,7 @@
 import type { InsertResult, NodeState, Packet } from '../types'
 import { chaos } from './chaos-controller'
 import type { SimEvent } from './event-bus'
-import { addHop, createPacket } from './packet'
+import { createPacket } from './packet'
 
 /**
  * Information provided by the Simulation Engine to a node on every clock tick.
@@ -46,9 +46,6 @@ export class ClientBehavior implements Behavior {
     // Poison messages are bad data entering the pipeline — mark them at birth.
     const packet = createPacket({ poisoned: chaos.hasFailure('worker', 'worker_invalid') })
 
-    // Record that the packet visited this node
-    addHop(packet, ctx.nodeId)
-
     ctx.setState('processing')
     ctx.emitEvent({
       nodeId: ctx.nodeId,
@@ -70,7 +67,6 @@ export class GatewayBehavior implements Behavior {
       return {}
     }
 
-    addHop(packet, ctx.nodeId)
     ctx.setState('processing')
     ctx.emitEvent({
       nodeId: ctx.nodeId,
@@ -95,7 +91,6 @@ export class RedisBehavior implements Behavior {
       ctx.setState('idle')
       return {}
     }
-    addHop(packet, ctx.nodeId)
     ctx.setState('processing')
     ctx.emitEvent({
       nodeId: ctx.nodeId,
@@ -128,7 +123,6 @@ export class WorkerBehavior implements Behavior {
       return {}
     }
 
-    addHop(packet, ctx.nodeId)
     ctx.setState('processing')
     ctx.emitEvent({
       nodeId: ctx.nodeId,
@@ -154,9 +148,6 @@ export class PostgresBehavior implements Behavior {
     }
 
     // Final destination reached
-    packet.status = 'processed'
-    addHop(packet, ctx.nodeId)
-
     ctx.setState('processing')
     ctx.emitEvent({
       nodeId: ctx.nodeId,
@@ -187,7 +178,6 @@ export class MongoDBBehavior implements Behavior {
     if (chaos.hasFailure('postgresql')) return {}
 
     const packet = ctx.queue.shift()!
-    addHop(packet, ctx.nodeId)
     ctx.emitEvent({
       nodeId: ctx.nodeId,
       type: 'forward',
@@ -208,7 +198,6 @@ export class HealerBehavior implements Behavior {
       return {}
     }
 
-    addHop(packet, ctx.nodeId)
     ctx.setState('processing')
     ctx.emitEvent({
       nodeId: ctx.nodeId,
@@ -226,8 +215,6 @@ export class DatabaseRouterBehavior implements Behavior {
       ctx.setState('idle')
       return {}
     }
-
-    addHop(packet, ctx.nodeId)
 
     // Poison message → DLQ (data problem, CB stays closed).
     // Only packets marked poisoned at creation time — not everything in the queue.
@@ -269,8 +256,6 @@ export class DLQBehavior implements Behavior {
       return {}
     }
 
-    packet.status = 'dead_lettered'
-    addHop(packet, ctx.nodeId)
     ctx.setState('processing')
     ctx.emitEvent({
       nodeId: ctx.nodeId,

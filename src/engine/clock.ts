@@ -2,12 +2,7 @@
 * Clock will drive the entire simulator - It's the heartbeat
 * Every component/node will simply react to this clock.
 */
-export interface TickPayload {
-  tick: number
-  dt: number
-}
-
-type TickCallback = (payload: TickPayload) => void
+type TickCallback = () => void
 
 export class Clock {
   private baseInterval: number
@@ -79,8 +74,7 @@ export class Clock {
 
   #notify() {
     this._changeCount++
-    const payload: TickPayload = { tick: this._tick, dt: this.baseInterval }
-    this.subscribers.forEach(cb => cb(payload))
+    this.subscribers.forEach(cb => cb())
   }
 
   reset() {

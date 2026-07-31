@@ -12,7 +12,6 @@ export function useClock() {
     speed: clock.speed,
     pause: () => clock.pause(),
     resume: () => clock.resume(),
-    reset: () => clock.reset(),
     setSpeed: (s: number) => clock.setSpeed(s),
   }
 }

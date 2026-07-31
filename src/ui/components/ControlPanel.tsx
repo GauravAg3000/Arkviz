@@ -7,12 +7,20 @@ import { useClock } from '../hooks/useClock'
 
 const SPEEDS = [0.5, 1, 2, 5]
 
+const FAILURE_BUTTONS: { label: string; restoreLabel: string; nodeId: string; type: FailureType }[] = [
+  { label: 'Fail PG', restoreLabel: 'Restore PG', nodeId: 'postgresql', type: 'pg_down' },
+  { label: 'Crash Worker', restoreLabel: 'Restore Worker', nodeId: 'worker', type: 'worker_crash' },
+  { label: 'Poison Msg', restoreLabel: 'Clear Poison', nodeId: 'worker', type: 'worker_invalid' },
+]
+
 export function ControlPanel() {
   const { tick, isPaused, speed, pause, resume, setSpeed } = useClock()
   const [started, setStarted] = useState(false)
-  const [pgCountdown, setPgCountdown] = useState<number | null>(null)
-  const [crashCountdown, setCrashCountdown] = useState<number | null>(null)
-  const [poisonCountdown, setPoisonCountdown] = useState<number | null>(null)
+  const [countdowns, setCountdowns] = useState<Record<FailureType, number | null>>({
+    pg_down: null,
+    worker_crash: null,
+    worker_invalid: null,
+  })
 
   const handleStart = () => {
     setStarted(true)
@@ -24,33 +32,23 @@ export function ControlPanel() {
     setStarted(false)
   }
 
-  const startCountdown = (
-    nodeId: string,
-    type: FailureType,
-    setter: (n: number | null) => void,
-  ) => {
-    setter(3)
+  const startCountdown = (nodeId: string, type: FailureType) => {
+    setCountdowns((prev) => ({ ...prev, [type]: 3 }))
     let count = 3
     const id = setInterval(() => {
       count--
       if (count <= 0) {
         clearInterval(id)
-        setter(null)
+        setCountdowns((prev) => ({ ...prev, [type]: null }))
         chaos.injectFailure(nodeId, type)
       } else {
-        setter(count)
+        setCountdowns((prev) => ({ ...prev, [type]: count }))
       }
     }, 1000)
   }
 
-  const failBtn = (
-    label: string,
-    restoreLabel: string,
-    nodeId: string,
-    type: FailureType,
-    countdown: number | null,
-    setter: (n: number | null) => void,
-  ) => {
+  const failBtn = (label: string, restoreLabel: string, nodeId: string, type: FailureType) => {
+    const countdown = countdowns[type]
     const failureActive = chaos.hasFailure(nodeId, type)
     const text = countdown !== null ? `${countdown}...` : failureActive ? restoreLabel : label
     const active = failureActive ? 'bg-[#00FF9D] text-[#0B0E14] border-[#00FF9D]' : 'bg-[#1E2638] text-[#F1F5F9] border-[#2A3548]'
@@ -64,7 +62,7 @@ export function ControlPanel() {
             chaos.restoreFailure(nodeId, type)
             return
           }
-          startCountdown(nodeId, type, setter)
+          startCountdown(nodeId, type)
         }}
       >
         {text}
@@ -112,9 +110,9 @@ export function ControlPanel() {
 
       <div className="w-px h-[22px] bg-[#2A3548]" />
 
-      {failBtn('Fail PG', 'Restore PG', 'postgresql', 'pg_down', pgCountdown, setPgCountdown)}
-      {failBtn('Crash Worker', 'Restore Worker', 'worker', 'worker_crash', crashCountdown, setCrashCountdown)}
-      {failBtn('Poison Msg', 'Clear Poison', 'worker', 'worker_invalid', poisonCountdown, setPoisonCountdown)}
+      {FAILURE_BUTTONS.map(({ label, restoreLabel, nodeId, type }) =>
+        failBtn(label, restoreLabel, nodeId, type)
+      )}
 
       <div className="w-px h-[22px] bg-[#2A3548]" />
 

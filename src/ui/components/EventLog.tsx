@@ -3,10 +3,11 @@ import { engine } from '../../engine/simulation-engine'
 
 const EVENT_COLORS: Record<string, string> = {
   emit: 'text-yellow-400',
-  success: 'text-green-400',
+  forward: 'text-cyan-400',
+  process: 'text-green-400',
+  receive: 'text-purple-400',
   failure: 'text-red-400',
   info: 'text-blue-400',
-  error: 'text-red-500',
 }
 
 export function EventLog() {
@@ -35,7 +36,7 @@ export function EventLog() {
       </button>
 
       {!collapsed && (
-        <div className="flex-1 overflow-y-auto max-h-40 thin-scroll">
+        <div className="flex-1 overflow-y-auto max-h-40">
           {reversed.length === 0 ? (
             <p className="text-xs text-slate-600 italic px-3 py-4 text-center">No events yet</p>
           ) : (

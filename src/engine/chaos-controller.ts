@@ -28,16 +28,6 @@ export class ChaosController {
     return this.failures.has(nodeId)
   }
 
-  getActiveFailures(): Array<{ nodeId: string; type: FailureType }> {
-    const result: Array<{ nodeId: string; type: FailureType }> = []
-    for (const [nodeId, types] of this.failures) {
-      for (const type of types) {
-        result.push({ nodeId, type })
-      }
-    }
-    return result
-  }
-
   clear() {
     this.failures.clear()
   }

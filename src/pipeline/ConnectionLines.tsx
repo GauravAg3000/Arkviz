@@ -5,7 +5,7 @@ import { NODE_MAP, CONNECTIONS } from './config'
 const HORIZ = 55
 const VERT = 35
 
-export function getPathPoints(from: string, to: string): { x: number; y: number }[] {
+function getPathPoints(from: string, to: string): { x: number; y: number }[] {
   const a = NODE_MAP[from]
   const b = NODE_MAP[to]
   if (!a || !b) return []
@@ -50,10 +50,7 @@ export function getPathD(from: string, to: string): string | null {
   return 'M ' + pts.map(p => `${p.x},${p.y}`).join(' L ')
 }
 
-const PATH_DATA: (string | null)[] = CONNECTIONS.map(conn => {
-  const pts = getPathPoints(conn.from, conn.to)
-  return pts.length >= 2 ? 'M ' + pts.map(p => `${p.x},${p.y}`).join(' L ') : null
-})
+const PATH_DATA: (string | null)[] = CONNECTIONS.map(conn => getPathD(conn.from, conn.to))
 
 export const ConnectionLines = memo(function ConnectionLines() {
   return (
