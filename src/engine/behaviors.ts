@@ -43,7 +43,8 @@ export class ClientBehavior implements Behavior {
       ctx.setState('idle')
       return {}
     }
-    const packet = createPacket()
+    // Poison messages are bad data entering the pipeline — mark them at birth.
+    const packet = createPacket({ poisoned: chaos.hasFailure('worker', 'worker_invalid') })
 
     // Record that the packet visited this node
     addHop(packet, ctx.nodeId)
@@ -96,6 +97,11 @@ export class RedisBehavior implements Behavior {
     }
     addHop(packet, ctx.nodeId)
     ctx.setState('processing')
+    ctx.emitEvent({
+      nodeId: ctx.nodeId,
+      type: 'forward',
+      message: `${packet.id} buffered in Redis`,
+    })
 
     // Redis only forwards packets.
     return {
@@ -224,7 +230,8 @@ export class DatabaseRouterBehavior implements Behavior {
     addHop(packet, ctx.nodeId)
 
     // Poison message → DLQ (data problem, CB stays closed).
-    if (chaos.hasFailure('worker', 'worker_invalid')) {
+    // Only packets marked poisoned at creation time — not everything in the queue.
+    if (packet.poisoned) {
       ctx.emitEvent({
         nodeId: ctx.nodeId,
         type: 'failure',

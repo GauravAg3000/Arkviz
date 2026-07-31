@@ -25,6 +25,7 @@ export interface Packet {
   status: PacketStatus
   route: RouteHop[]
   createdAt: number
+  poisoned: boolean
 }
 
 /** A packet currently being animated between two nodes. */
